@@ -1,11 +1,10 @@
 # pptimportLatex
-A Latex package to import pictures directly from Power Point, automating the whole process of exporting, cropping, saving importing in a Latex document.
-Works only in Windows
+A Latex package to import pictures from Power Point to Latex, automating the whole tedious process of exporting, cropping, saving importing in a Latex document.
+Works only under Windows.
 Drawing pictures in Latex is a pain in the ass, even with the available drawing packages, most notably the all-powerful TikZ (a brilliant work: the REAL way to draw pictures in Latex). Mostly, I rather prefer to draw my pictures and diagrams in Microsoft Power Point, and here’s the problem.
 Instead of doing it manually, the pptimport package does everything you would do by hand.
 Usage is very simple, as it provides 6 commands to import a slide’s content into a Latex figure, providing alternative forms under-the-hood to use a PNG (pixel-based) or a PDF file (for vector content). 
-In its simplest form, a figure with
-the content of slide 3 of a Power Point presentation figures.pptx is created by
+In its simplest form, a figure with the content of slide 3 of a Power Point presentation figures.pptx is created by
 
 \begin{figure}
 \includegraphicspptpdf{figures.pptx}{3}
