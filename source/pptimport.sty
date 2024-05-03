@@ -1,0 +1,140 @@
+\NeedsTeXFormat{LaTeX2e}[1994/06/01]
+\ProvidesPackage{pptimport}[2024/05/03 First Release]
+
+\RequirePackage{overpic}
+\RequirePackage{calc}
+
+%This package provides the following commands:
+%\includegraphicspptpdf: automatically import a slide from PPT or PPTX Power Point presentation (requires the exportPptToPng.vbs script to be reachable (i.e. it should be in system Path))
+%\includegraphicspptpng: automatically import a slide from PPT or PPTX Power Point presentation (requires the exportPptToPng.vbs script to be reachable (i.e. it should be in system Path))
+%\includegraphicspptpdfsubs: import a slide from PPT or PPTX Power Point replacing text placeholders in Power Point (requires the exportPptToPngReplace.vbs script to be reachable)
+%\includegraphicspptpngsubs: import a slide from PPT or PPTX Power Point replacing text placeholders in Power Point (requires the exportPptToPngReplace.vbs script to be reachable)
+%\includegraphicspptpdfsubstex: import a slide from PPT or PPTX Power Point replacing text placeholders in Latex (requires the exportPptToPngReplace.vbs script to be reachable)
+%\includegraphicspptpngsubstex: import a slide from PPT or PPTX Power Point replacing text placeholders in Latex (requires the exportPptToPngReplace.vbs script to be reachable)
+
+%The package needs overpic and calc
+%Internally there is a modified checksum calculator inspired by https://tex.stackexchange.com/questions/39719/calculating-checksum by Martin Scharr
+%This is used by includegraphispptpdfsubs (and its variants)
+
+\newcounter{checksum}
+\newcounter{weight}
+\makeatletter
+\newcommand\checksum[1]{%
+    \setcounter{checksum}{0}% This is the actual checksum
+    \setcounter{weight}{200}% weight only counts the characters from the first up to 100
+    \expandafter\@checksum#1\@nnil
+    \loop\ifnum\value{checksum}>1000000
+        \addtocounter{checksum}{-1000001}%   Compute MOD the given threshold
+    \repeat
+    \setcounter{checksum}{1000001-\value{checksum}}% Compute the complement
+}
+% Reads the input one token a time, should only contains normal characters!
+\def\@checksum#1{%
+    \ifx\@nnil#1\relax\else % stop looping when endmarker is read
+        %\addtocounter{checksum}{\value{weight}*(`#1-`0)}%
+				\addtocounter{checksum}{`#1}%
+        \addtocounter{weight}{-1}%
+        \expandafter\@checksum % Recursive call => loop
+    \fi
+}
+
+%\includegraphicspptpdf and \includegraphicspptpng: Export a slide from a given Power Point file to pdf and insert it as a figure in the Latex output
+%USAGE: 	\includegraphicspptpdf[OPTIONSFOR_INCLUDEGRAPHICS]{pptfileincurrentfolder}{slidenumberfrom1}
+%					\includegraphicspptpng[OPTIONSFOR_INCLUDEGRAPHICS]{pptfileincurrentfolder}{slidenumberfrom1}
+%The "pdf" version is vectorial (i.e. preserves vector shapes drawn in Power Point) but objects beyond the slide borders will be clipped away
+%The "png" version is raster (i.e. all shapes are converted to pixels) but all objects beyond the slide borders will be also included
+%Internally it invokes the windows VB script: exportPptToPng <pptfilename IN CURRENT FOLDER> <slidenumber> <0=png OR 1=PDF>
+%which first checks if a file named pptfileincurrentfolder_slidenumberfrom1.pdf exists. 
+%exportPptToPng must be accessible, i.e. the parent folder must be added to the system path
+%If the desired pdf (or png) exists and has same modification date as the ppt file then the existing pdf/png is retained and inserted via includegraphics.
+%If the figure file does not exist or has a different modification timestamp then the ppt file is opened in Power Point and the slide is exported to the pdf/png file pptfileincurrentfolder_slidenumberfrom1.pdf/png and then included via includegraphics.
+%EXAMPLE: \begin{figure}[!hbp] \centering \includegraphicspptpdf[width=\columnwidth]{Figures.ppt}{2} \end{figure}
+\providecommand{\includegraphicspptpdf}[3][]{%
+\immediate\write18{call exportPptToPng.vbs #2 #3 1}%
+\includegraphics[#1]{#2_#3.pdf}
+}
+%EXAMPLE: \begin{figure}[!hbp] \centering \includegraphicspptpng[width=\columnwidth]{Figures.ppt}{2} \end{figure}
+\providecommand{\includegraphicspptpng}[3][]{%
+\immediate\write18{call exportPptToPng.vbs #2 #3 0}%
+\includegraphics[#1]{#2_#3.png}
+}
+
+%\includegraphicspptpdfsubs and \includegraphicspptpngsubs: Export a slide from a given Power Point file to png and insert it as a figure in the Latex output, replacing TTn strings with the provided strings within Power Point
+%USAGE: \includegraphicspptpdfsubs[OPTIONSFOR_INCLUDEGRAPHICS]{pptfileincurrentfolder}{slidenumberfrom1}{firststring;secondstring;...}
+%USAGE: \includegraphicspptpngsubs[OPTIONSFOR_INCLUDEGRAPHICS]{pptfileincurrentfolder}{slidenumberfrom1}{firststring;secondstring;...}
+%the replacestring is the semicolon-separated string like "firststring;secondstring;..." which is interpreted as: "TT1"->"firststring", "TT2"->"secondstring"...
+%Therefore, TT1, TT2, TTn are the text used as placeholders in the Powerpoint figure.
+%The replacement strings (firststring...) cannot contain the semicolon character anywhere.
+%Every occurrence of TTn will be replaced by the corresponding provided string.
+%No way of replacing a placeholder by a string including subscripts/superscripts and normal text. The only workaround is to define one placeholder (i.e. TT1) with the normal text size and another separate placeholder "TT2" with smaller font and proper offset, to mimick a TT1_{TT2} structure.
+%If less strings are provided than the available TTn, the non-replaced placeholders will remain visible as TTn.
+%If necessary, to make all placeholders invisible even when not replaced, make them with same font color as the background in Power Point (if possible).
+%To not replace a placeholder, for instance TT3, pass an empty replacement string: i.e. firststring;secondstring;;fourthstring... (two successive semicolons)
+%If a TTn placeholder is not found, no warning or error is issued, but the replacement of that string will not occur.
+%The "pdf" version is vectorial (i.e. preserves vector shapes drawn in Power Point) but objects beyond the slide borders will be clipped away (thus notes not to be visible can be placed outside the slide. Unsure if such notes anyway are somewhere hidden in the pdf but still present).
+%The "png" version is raster (i.e. all shapes are converted to pixels) but all objects beyond the slide borders will be also included.
+%The filename of the pdf or png file is <pptfileincurrentfolder>_<slidenumber>_<checksum>.pdf
+%	where <checksum> is a numerical value from 0 to 1000000 corresponding to the checksum of replacelist, used internally to notice when the replacelist has been changed and so the figure needs to be exported again. If replacelist is longer than 200characters, the checksum might not be accurate 
+%EXAMPLE: \begin{figure} \includegraphicspptpdfsubs[width=\columnwidth]{TestFigures.pptx}{1}{C1;Y1;Text!;C3;P1}  \end{figure}
+\providecommand{\includegraphicspptpdfsubs}[4][]{%
+\checksum{\string\expandafter#4}
+\immediate\write18{call exportPptToPngReplace.vbs #2 #3 1 "_\thechecksum" "#4"}% Beware: the EXPONENT symbol is escaped by Windows CALL as a double exponent ^^, which fails when later being interpreted by Latex. Thus the VBScript must remove double exponents.
+\includegraphics[#1]{#2_#3_\thechecksum.pdf}
+}
+\providecommand{\includegraphicspptpngsubs}[4][]{%
+\checksum{\string#4}
+\immediate\write18{call exportPptToPngReplace.vbs #2 #3 0 "_\thechecksum" "#4"}% Beware: the EXPONENT symbol is escaped by Windows CALL as a double exponent ^^, which fails when later being interpreted by Latex. Thus the VBScript must remove double exponents.
+\includegraphics[#1]{#2_#3_\thechecksum.png}
+}
+
+
+
+%\includegraphicspptpdfsubstex and \includegraphicspptpngsubs: Export a slide from a given Power Point file to png and insert it as a figure in the Latex output, replacing TTn strings with the provided strings typeset by Latex
+%USAGE: \includegraphicspptpdfsubstex[OPTIONSFOR_INCLUDEGRAPHICS]{pptfileincurrentfolder}{slidenumberfrom1}{firststring;secondstring;...}
+%USAGE: \includegraphicspptpngsubstex[OPTIONSFOR_INCLUDEGRAPHICS]{pptfileincurrentfolder}{slidenumberfrom1}{firststring;secondstring;...}
+%the replacestring is the semicolon-separated string like "firststring;secondstring;..." which is interpreted as: "TT1"->"firststring", "TT2"->"secondstring"...
+%The replacement strings (firststring...) cannot contain the semicolon character anywhere.
+%The provided replacement string are typeset by Latex. For instance, you can use math mode: replacelist=$C_1$;Text standard;$C_2=2C_1 \frac{1}{3}$
+%Therefore, TT1, TT2, TTn are the text used as placeholders in the Powerpoint figure.
+%Only the first occurrence of TTn will be replaced. Replacement is approximate (in terms of position, margins...), therefore we recommend to have the placeholders as individual textboxes (i.e. not together with other text in the same box)
+%The text size is the Latex one, even if the figure is scaled, i.e passing option width=0.5\columnwidth.
+%Thus the text size might be too large if the figure is made small. Use the Latex commands to change size, for instance \small, \tiny... 
+%To change all sizes, a single /small command can be added before \includegraphicspptpngsubs or \includegraphicspptpdfsubs.
+%To change the size of only one replacement (for instance TT3), specify replacelist=$C_1$;Text standard;{\tiny $C_2=2C_1\frac{1}{3}$}
+%Further Latex commands can be used in each replacement string (i.e. \fbox, \color...) but none should include the semicolon character.
+%If less strings are provided than the available TTn, the non-replaced placeholders will remain visible as TTn.
+%If necessary, to make all placeholders invisible even when not replaced, make them with same font color as the background in Power Point (if possible).
+%To not replace a placeholder, for instance TT3, pass an empty replacement string: i.e. firststring;secondstring;;fourthstring... (two successive semicolons)
+%If a TTn placeholder is not found, no warning or error is issued, but the replacement of that string will not occur.
+%The "pdf" version is vectorial (i.e. preserves vector shapes drawn in Power Point) but objects beyond the slide borders will be clipped away (thus notes not to be visible can be placed outside the slide. Unsure if such notes anyway are somewhere hidden in the pdf but still present).
+%The "png" version is raster (i.e. all shapes are converted to pixels) but all objects beyond the slide borders will be also included.
+%The filename of the pdf or png file is <pptfileincurrentfolder>_<slidenumber>_t<checksum>.pdf
+%	where <checksum> is a numerical value from 0 to 1000000 corresponding to the checksum of replacelist, used internally to notice when the replacelist has been changed and so the figure needs to be exported again. If replacelist is longer than 200characters, the checksum might not be accurate 
+%Further, a tex file is also created <pptfileincurrentfolder>_<slidenumber>_t<checksum>.pdf.t which is automatically imported as \input, which contains a sequence of \put commands describing where each replacement string must be typeset and placed as overlay on top of the pdf/png picture with blanked placeholders.
+%
+%EXAMPLE: \begin{figure} \includegraphicspptpdfsubs[width=\columnwidth]{TestFigures.pptx}{1}{$C_1$;$Y_1$;Text!;$C_3=\frac{Y_1}{\omega}$;P1}  \end{figure}
+
+\usepackage{overpic}
+\providecommand{\includegraphicspptpdfsubstex}[4][]{%
+\checksum{\detokenize{#4}}%   %The checksum function will fail if there are non-printable characters (because at some point it uses  `#1 (backtick retrieves the character code) which fails if #1 contains for instance \hfill or anything generated by expansion of a formula. Thus we detokenize everything: we only pass the string as it is down to the vbs script. Once the .t file will be input, expansion will occur.
+\immediate\write18{call exportPptToPngReplace.vbs #2 #3 1 "_t\thechecksum" "#4" 1}% Beware: the EXPONENT symbol is escaped by Windows CALL as a double exponent ^^, which fails when later being interpreted by Latex. Thus the VBScript must remove double exponents.
+\begin{overpic}[permil,#1]{#2_#3_t\thechecksum.pdf}% \begin{overpic}[permil,grid,#1]{#2_#3_\thechecksum.pdf}%
+%Here we write all the latex stuff at the desired coordinates as sequence of %\put(10,67){Text1}
+\input{#2_#3_t\thechecksum.pdf.t}
+\end{overpic}%
+}
+
+\providecommand{\includegraphicspptpngsubstex}[4][]{%
+\checksum{\detokenize{#4}}%   %The checksum function will fail if there are non-printable characters (because at some point it uses  `#1 (backtick retrieves the character code) which fails if #1 contains for instance \hfill or anything generated by expansion of a formula. Thus we detokenize everything: we only pass the string as it is down to the vbs script. Once the .t file will be input, expansion will occur.
+\immediate\write18{call exportPptToPngReplace.vbs #2 #3 0 "_t\thechecksum" "\detokenize{#4}" 1}% Beware: the EXPONENT symbol is escaped by Windows CALL as a double exponent ^^, which fails when later being interpreted by Latex. Thus the VBScript must remove double exponents.
+\begin{overpic}[permil,#1]{#2_#3_t\thechecksum.png}% \begin{overpic}[permil,grid,#1]{#2_#3_\thechecksum.pdf}%
+%Here we write all the latex stuff at the desired coordinates as sequence of %\put(10,67){Text1}
+\input{#2_#3_t\thechecksum.png.t}
+\end{overpic}%
+}
+
+
+
+
+
+\endinput
